@@ -99,11 +99,17 @@ export default async (req, res) => {
     }
 
     // --- ReturnToBot Intent ---
-    if (intentName === "ReturnToBot") {
-      await takeControlBack(psid);
-      await sendMessage(psid, `✅ You're back with the bot now, ${firstName}! How can I assist you?`);
-      return res.status(200).json({ fulfillmentText: "" });
-    }
+   if (intentName === "ReturnToBot") {
+  if (!humanControl[psid]) {
+    console.log("Bot already has control for PSID:", psid);
+  } else {
+    await takeControlBack(psid); // Only call if human had control
+  }
+  humanControl[psid] = false; // resume bot
+  return res.status(200).json({
+    fulfillmentText: `✅ You're back with the bot now, ${firstName}! How can I assist you?`,
+  });
+}
 
     // --- Fallback ---
     await sendMessage(psid, "Hello! 👋");
@@ -113,3 +119,4 @@ export default async (req, res) => {
     return res.status(500).json({ fulfillmentText: "Hi there! 👋" });
   }
 };
+
