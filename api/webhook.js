@@ -1,16 +1,15 @@
 import axios from "axios";
 
-// Your Facebook Page Access Token
+// Environment variables
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
-// Your Bot App ID (not Page Inbox)
 const BOT_APP_ID = process.env.BOT_APP_ID;
 
-// In-memory map to track which PSIDs are controlled by humans
+// In-memory tracker for which users are with human agents
 const humanControl = {};
 
 // --- Utility Functions ---
 
-// Send message directly to Messenger
+// Send a message to Messenger
 async function sendMessage(psid, text) {
   try {
     await axios.post(
@@ -30,7 +29,7 @@ async function passControlToHuman(psid) {
       `https://graph.facebook.com/v17.0/me/pass_thread_control`,
       {
         recipient: { id: psid },
-        target_app_id: 263902037430900, // Page Inbox app ID
+        target_app_id: 263902037430900, // Page Inbox App ID
         metadata: "Passing control to human agent",
       },
       { params: { access_token: PAGE_ACCESS_TOKEN } }
@@ -49,8 +48,8 @@ async function takeControlBack(psid) {
       `https://graph.facebook.com/v17.0/me/take_thread_control`,
       {
         recipient: { id: psid },
+        target_app_id: BOT_APP_ID,
         metadata: "Returning control to bot",
-        target_app_id: BOT_APP_ID, // IMPORTANT: bot app ID
       },
       { params: { access_token: PAGE_ACCESS_TOKEN } }
     );
@@ -64,19 +63,23 @@ async function takeControlBack(psid) {
 // --- Webhook Handler ---
 export default async (req, res) => {
   try {
-    console.log("Incoming webhook body:", JSON.stringify(req.body, null, 2));
-
     if (req.method === "GET") return res.status(200).send("Webhook alive");
     if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
 
     const body = req.body;
-    const intentName = body.queryResult?.intent?.displayName || "UnknownIntent";
     const originalRequest = body.originalDetectIntentRequest;
+    const intentName = body.queryResult?.intent?.displayName || "UnknownIntent";
     const psid = originalRequest?.payload?.data?.sender?.id;
 
     if (!psid) {
       console.warn("PSID missing. Cannot send reply.");
       return res.status(200).json({ fulfillmentText: "Hi! 👋" });
+    }
+
+    // --- PAUSE BOT IF HUMAN IS CONTROLLING ---
+    if (humanControl[psid]) {
+      console.log("Bot paused: human is in control for PSID:", psid);
+      return res.status(200).json({ fulfillmentText: "" });
     }
 
     // Fetch first name safely
@@ -89,12 +92,6 @@ export default async (req, res) => {
     } catch (err) {
       console.warn("Error fetching first name:", err.message);
       firstName = "";
-    }
-
-    // --- Pause bot if human is controlling ---
-    if (humanControl[psid]) {
-      console.log("Bot paused: human is in control for PSID:", psid);
-      return res.status(200).json({ fulfillmentText: "" });
     }
 
     // --- Default Welcome Intent ---
