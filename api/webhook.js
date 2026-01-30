@@ -2,9 +2,10 @@ import axios from "axios";
 
 // Your Facebook Page Access Token
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
+// Your Bot App ID (not Page Inbox)
+const BOT_APP_ID = process.env.BOT_APP_ID;
 
-// In-memory map to track which PSIDs are currently controlled by humans
-// NOTE: For production, replace this with Redis/Firebase for persistence
+// In-memory map to track which PSIDs are controlled by humans
 const humanControl = {};
 
 // --- Utility Functions ---
@@ -22,7 +23,7 @@ async function sendMessage(psid, text) {
   }
 }
 
-// Pass control to human agent
+// Pass control to human agent (Page Inbox)
 async function passControlToHuman(psid) {
   try {
     await axios.post(
@@ -49,6 +50,7 @@ async function takeControlBack(psid) {
       {
         recipient: { id: psid },
         metadata: "Returning control to bot",
+        target_app_id: BOT_APP_ID, // IMPORTANT: bot app ID
       },
       { params: { access_token: PAGE_ACCESS_TOKEN } }
     );
