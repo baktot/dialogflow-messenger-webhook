@@ -1,6 +1,26 @@
 import axios from "axios";
 
+// Your Facebook Page Access Token
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
+
+// In-memory map to track which PSIDs are currently controlled by humans
+// NOTE: For production, replace this with Redis/Firebase for persistence
+const humanControl = {};
+
+// --- Utility Functions ---
+
+// Send message directly to Messenger
+async function sendMessage(psid, text) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v17.0/me/messages`,
+      { recipient: { id: psid }, message: { text } },
+      { params: { access_token: PAGE_ACCESS_TOKEN } }
+    );
+  } catch (err) {
+    console.error("❌ Messenger send error:", err.response?.data || err.message);
+  }
+}
 
 // Pass control to human agent
 async function passControlToHuman(psid) {
@@ -14,7 +34,8 @@ async function passControlToHuman(psid) {
       },
       { params: { access_token: PAGE_ACCESS_TOKEN } }
     );
-    console.log("✅ Control passed to human agent for PSID:", psid);
+    humanControl[psid] = true; // Pause bot
+    console.log("✅ Control passed to human for PSID:", psid);
   } catch (err) {
     console.error("❌ Handoff error:", err.response?.data || err.message);
   }
@@ -31,28 +52,14 @@ async function takeControlBack(psid) {
       },
       { params: { access_token: PAGE_ACCESS_TOKEN } }
     );
+    humanControl[psid] = false; // Resume bot
     console.log("✅ Control returned to bot for PSID:", psid);
   } catch (err) {
     console.error("❌ Take control error:", err.response?.data || err.message);
   }
 }
 
-// Send message directly to Messenger
-async function sendMessage(psid, text) {
-  try {
-    await axios.post(
-      `https://graph.facebook.com/v17.0/me/messages`,
-      {
-        recipient: { id: psid },
-        message: { text },
-      },
-      { params: { access_token: PAGE_ACCESS_TOKEN } }
-    );
-  } catch (err) {
-    console.error("❌ Messenger send error:", err.response?.data || err.message);
-  }
-}
-
+// --- Webhook Handler ---
 export default async (req, res) => {
   try {
     console.log("Incoming webhook body:", JSON.stringify(req.body, null, 2));
@@ -82,6 +89,12 @@ export default async (req, res) => {
       firstName = "";
     }
 
+    // --- Pause bot if human is controlling ---
+    if (humanControl[psid]) {
+      console.log("Bot paused: human is in control for PSID:", psid);
+      return res.status(200).json({ fulfillmentText: "" });
+    }
+
     // --- Default Welcome Intent ---
     if (intentName === "Default Welcome Intent") {
       await sendMessage(psid, `Hi ${firstName}! 👋 Welcome to our page! How can I help you today?`);
@@ -108,6 +121,7 @@ export default async (req, res) => {
     // --- Fallback ---
     await sendMessage(psid, "Hello! 👋");
     return res.status(200).json({ fulfillmentText: "" });
+
   } catch (err) {
     console.error("Webhook error:", err);
     return res.status(500).json({ fulfillmentText: "Hi there! 👋" });
