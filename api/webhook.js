@@ -49,7 +49,8 @@ export default async (req, res) => {
 
     const body = req.body;
     const originalRequest = body.originalDetectIntentRequest;
-    const intentName = body.queryResult.intent.displayName;
+    // Safely get the intent name
+    const intentName = body.queryResult?.intent?.displayName || "UnknownIntent";
 
     if (originalRequest && originalRequest.source === "facebook") {
       const psid = originalRequest.payload.data.sender.id;
@@ -74,43 +75,4 @@ export default async (req, res) => {
       }
 
       // --- TalkToHuman Intent ---
-      if (intentName === "TalkToHuman") {
-        // Notify user
-        await axios.post(
-          `https://graph.facebook.com/v17.0/me/messages`,
-          {
-            recipient: { id: psid },
-            message: {
-              text: `Hi ${firstName}! 👋 You are now being connected to a human agent. They will reply shortly.`,
-            },
-          },
-          { params: { access_token: PAGE_ACCESS_TOKEN } }
-        );
-
-        // Pass control to human agent
-        await passControlToHuman(psid);
-
-        return res.status(200).json({ fulfillmentText: "" }); // Already sent message
-      }
-
-      // --- ReturnToBot Intent ---
-      if (intentName === "ReturnToBot") {
-        // Take control back from human
-        await takeControlBack(psid);
-
-        return res.status(200).json({
-          fulfillmentText: `✅ You're back with the bot now, ${firstName}! How can I assist you?`,
-        });
-      }
-
-      // Fallback
-      return res.status(200).json({ fulfillmentText: "Hello! 👋" });
-    }
-
-    return res.status(200).json({ fulfillmentText: "Hello! 👋" });
-
-  } catch (err) {
-    console.error("Webhook error:", err);
-    return res.status(500).json({ fulfillmentText: "Hi there! 👋" });
-  }
-};
+      if (int
