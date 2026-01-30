@@ -1,8 +1,13 @@
-import { get } from "axios";
+import axios from "axios";
 
 export default async (req, res) => {
   try {
-    // Only accept POST
+    // Allow GET for testing
+    if (req.method === "GET") {
+      return res.status(200).send("Webhook is alive!");
+    }
+
+    // Only accept POST for Dialogflow
     if (req.method !== "POST") {
       return res.status(405).send("Method Not Allowed");
     }
@@ -14,7 +19,7 @@ export default async (req, res) => {
       const psid = originalRequest.payload.data.sender.id;
 
       // Fetch first name from Facebook Graph API
-      const fbResponse = await get(
+      const fbResponse = await axios.get(
         `https://graph.facebook.com/${psid}`,
         {
           params: {
