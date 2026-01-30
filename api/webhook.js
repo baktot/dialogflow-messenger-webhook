@@ -3,14 +3,15 @@ import axios from "axios";
 // Your Facebook Page Access Token
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 
-// Function to pass control to human agent
+// Function to pass control to human agent (Page Inbox)
 async function passControlToHuman(psid) {
   try {
     await axios.post(
       `https://graph.facebook.com/v17.0/me/pass_thread_control`,
       {
         recipient: { id: psid },
-        target_app_id: 263902037430900, // Facebook Inbox
+        target_app_id: 263902037430900, // Page Inbox app ID
+        metadata: "Passing control to human agent",
       },
       {
         params: { access_token: PAGE_ACCESS_TOKEN },
@@ -22,9 +23,27 @@ async function passControlToHuman(psid) {
   }
 }
 
+// Function to take control back from human agent to bot
+async function takeControlBack(psid) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v17.0/me/take_thread_control`,
+      {
+        recipient: { id: psid },
+        metadata: "Returning control to bot",
+      },
+      {
+        params: { access_token: PAGE_ACCESS_TOKEN },
+      }
+    );
+    console.log("✅ Control returned to bot for PSID:", psid);
+  } catch (err) {
+    console.error("❌ Take control error:", err.response?.data || err.message);
+  }
+}
+
 export default async (req, res) => {
   try {
-    // Simple GET for testing
     if (req.method === "GET") return res.status(200).send("Webhook is alive!");
     if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
 
@@ -47,34 +66,51 @@ export default async (req, res) => {
       );
       const firstName = fbResponse.data.first_name;
 
-      // --- Handle Default Welcome Intent ---
+      // --- Default Welcome Intent ---
       if (intentName === "Default Welcome Intent") {
         return res.status(200).json({
           fulfillmentText: `Hi ${firstName}! 👋 Welcome to our page! How can I help you today?`,
         });
       }
 
-      // --- Handle TalkToHuman Intent ---
+      // --- TalkToHuman Intent ---
       if (intentName === "TalkToHuman") {
-        // Notify the user
-        res.status(200).json({
-          fulfillmentText: `Hi ${firstName}! 👋 You are now being connected to a human agent. They will reply shortly.`,
-        });
+        // Notify user
+        await axios.post(
+          `https://graph.facebook.com/v17.0/me/messages`,
+          {
+            recipient: { id: psid },
+            message: {
+              text: `Hi ${firstName}! 👋 You are now being connected to a human agent. They will reply shortly.`,
+            },
+          },
+          { params: { access_token: PAGE_ACCESS_TOKEN } }
+        );
 
         // Pass control to human agent
         await passControlToHuman(psid);
-        return;
+
+        return res.status(200).json({ fulfillmentText: "" }); // Already sent message
       }
 
-      // Fallback for other intents
+      // --- ReturnToBot Intent ---
+      if (intentName === "ReturnToBot") {
+        // Take control back from human
+        await takeControlBack(psid);
+
+        return res.status(200).json({
+          fulfillmentText: `✅ You're back with the bot now, ${firstName}! How can I assist you?`,
+        });
+      }
+
+      // Fallback
       return res.status(200).json({ fulfillmentText: "Hello! 👋" });
     }
 
-    // Fallback for non-Messenger requests
     return res.status(200).json({ fulfillmentText: "Hello! 👋" });
 
   } catch (err) {
     console.error("Webhook error:", err);
-    res.status(500).json({ fulfillmentText: "Hi there! 👋" });
+    return res.status(500).json({ fulfillmentText: "Hi there! 👋" });
   }
 };
